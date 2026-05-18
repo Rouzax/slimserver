@@ -930,7 +930,7 @@ sub _objForDbUrl {
 }
 
 sub _createOrUpdateAlbum {
-	my ($self, $attributes, $trackColumns, $isCompilation, $contributorId, $hasAlbumArtist, $create, $track, $basename) = @_;
+	my ($self, $attributes, $trackColumns, $isCompilation, $contributorId, $hasAlbumArtist, $create, $track, $basename, $albumDisplayArtist) = @_;
 
 	my $dbh = $self->dbh;
 
@@ -1296,6 +1296,7 @@ sub _createOrUpdateAlbum {
 	}
 
 	$albumHash->{musicbrainz_id} = $attributes->{MUSICBRAINZ_ALBUM_ID};
+	$albumHash->{display_artist} = $albumDisplayArtist if $albumDisplayArtist;
 
 	# Handle album gain tags.
 	for my $gainTag ( qw(REPLAYGAIN_ALBUM_GAIN REPLAYGAIN_ALBUM_PEAK) ) {
@@ -1708,6 +1709,22 @@ sub _newTrack {
 		return;
 	}
 
+	# Capture display strings from singular tags before _preCheckAttributes defers them.
+	# For multi-value tags, the first entry is the display string.
+	my $albumDisplayArtist;
+	if ( $attributeHash->{ALBUMARTIST} ) {
+		$albumDisplayArtist = ref $attributeHash->{ALBUMARTIST} eq 'ARRAY'
+			? $attributeHash->{ALBUMARTIST}->[0]
+			: $attributeHash->{ALBUMARTIST};
+	}
+
+	my $trackDisplayArtist;
+	if ( $attributeHash->{ARTIST} ) {
+		$trackDisplayArtist = ref $attributeHash->{ARTIST} eq 'ARRAY'
+			? $attributeHash->{ARTIST}->[0]
+			: $attributeHash->{ARTIST};
+	}
+
 	($attributeHash, $deferredAttributes) = $self->_preCheckAttributes({
 		'url'        => $url,
 		'attributes' => $attributeHash,
@@ -1799,6 +1816,8 @@ sub _newTrack {
 		$columnValueHash{primary_artist} = $artist->[0];
 	}
 
+	$columnValueHash{display_artist} = $trackDisplayArtist if $trackDisplayArtist;
+
 	### Create Work rows
 	my $workID;
 	if ( _workRequired($deferredAttributes->{'GENRE'}) ) {
@@ -1834,6 +1853,7 @@ sub _newTrack {
 		1,																		# create
 		undef,																	# Track
 		$dirname,
+		$albumDisplayArtist,
 	);
 
 	### Create Track row
@@ -1998,6 +2018,20 @@ sub updateOrCreateBase {
 			$attributeHash = { %{Slim::Formats->readTags($url)}, %$attributeHash  };
 		}
 
+		my $albumDisplayArtist;
+		if ( $attributeHash->{ALBUMARTIST} ) {
+			$albumDisplayArtist = ref $attributeHash->{ALBUMARTIST} eq 'ARRAY'
+				? $attributeHash->{ALBUMARTIST}->[0]
+				: $attributeHash->{ALBUMARTIST};
+		}
+
+		my $trackDisplayArtist;
+		if ( $attributeHash->{ARTIST} ) {
+			$trackDisplayArtist = ref $attributeHash->{ARTIST} eq 'ARRAY'
+				? $attributeHash->{ARTIST}->[0]
+				: $attributeHash->{ARTIST};
+		}
+
 		my $deferredAttributes;
 		($attributeHash, $deferredAttributes) = $self->_preCheckAttributes({
 			'url'        => $url,
@@ -2044,13 +2078,16 @@ sub updateOrCreateBase {
 		}
 		$trackPersistent->update() if blessed($trackPersistent);
 
+		$track->set_column('display_artist', $trackDisplayArtist) if $trackDisplayArtist;
+
 		# _postCheckAttributes does an update
 		if (!$playlist) {
 
 			$self->_postCheckAttributes({
-				'track'      => $track,
-				'attributes' => $deferredAttributes,
-				'integrateRemote' => $integrateRemote
+				'track'              => $track,
+				'attributes'         => $deferredAttributes,
+				'integrateRemote'    => $integrateRemote,
+				'albumDisplayArtist' => $albumDisplayArtist,
 			});
 		}
 
@@ -2844,6 +2881,7 @@ sub _preCheckAttributes {
 			MUSICBRAINZ_ARTIST_ID MUSICBRAINZ_ALBUMARTIST_ID MUSICBRAINZ_ALBUM_ID
 			MUSICBRAINZ_ALBUM_TYPE MUSICBRAINZ_ALBUM_STATUS RELEASETYPE
 			ALBUM_EXTID ARTIST_EXTID WORK WORKSORT
+			ARTISTS ALBUMARTISTS
 		))
 	{
 
@@ -3022,9 +3060,10 @@ sub _postCheckAttributes {
 
 	my $isDebug = main::DEBUGLOG && $log->is_debug;
 
-	my $track      = $args->{'track'};
-	my $attributes = $args->{'attributes'};
-	my $create     = $args->{'create'} || 0;
+	my $track              = $args->{'track'};
+	my $attributes         = $args->{'attributes'};
+	my $create             = $args->{'create'} || 0;
+	my $albumDisplayArtist = $args->{'albumDisplayArtist'};
 
 	# Don't bother with directories / lnks. This makes sure "No Artist",
 	# etc don't show up if you don't have any.
@@ -3086,10 +3125,12 @@ sub _postCheckAttributes {
 	my $albumId = $self->_createOrUpdateAlbum($attributes,
 		\%cols,																	# trackColumns
 		$isCompilation,
-		$artist->[0],	                                          # primary contributor-id
+		$artist->[0],															# primary contributor-id
 		defined $contributors->{'ALBUMARTIST'}->[0] ? 1 : 0,					# hasAlbumArtist
 		$create,																# create
 		$track,																	# Track
+		undef,																	# basename
+		$albumDisplayArtist,
 	);
 
 	# Don't add an album to container tracks - See bug 2337
@@ -3132,6 +3173,41 @@ sub _mergeAndCreateContributors {
 			main::DEBUGLOG && $isDebug && $log->debug(sprintf("-- Contributor '%s' of role 'ARTIST' transformed to role 'TRACKARTIST'",
 				$attributes->{'TRACKARTIST'},
 			));
+		}
+	}
+
+	# When plural tags (ALBUMARTISTS/ARTISTS) are present, merge their entries
+	# as individual contributors. These are known-clean individual names from
+	# the tagger, complementing whatever the singular tags contain.
+	for my $pair ( ['ALBUMARTISTS', 'ALBUMARTIST'], ['ARTISTS', $attributes->{TRACKARTIST} ? 'TRACKARTIST' : 'ARTIST'] ) {
+		my ($plural, $singular) = @$pair;
+		next unless $attributes->{$plural} && ref $attributes->{$plural} eq 'ARRAY';
+
+		my $existing = $attributes->{$singular};
+		my %seen;
+		if ( $existing ) {
+			my @names = ref $existing eq 'ARRAY' ? @$existing : ($existing);
+			for my $n (@names) {
+				for my $split ( Slim::Music::Info::splitTag($n) ) {
+					$seen{$split} = 1;
+				}
+			}
+		}
+
+		my @extras;
+		for my $name ( @{$attributes->{$plural}} ) {
+			next unless defined $name && $name ne '';
+			push @extras, $name unless $seen{$name};
+		}
+
+		if ( @extras ) {
+			if ( ref $existing eq 'ARRAY' ) {
+				push @$existing, @extras;
+			} elsif ( $existing ) {
+				$attributes->{$singular} = [ $existing, @extras ];
+			} else {
+				$attributes->{$singular} = \@extras;
+			}
 		}
 	}
 
