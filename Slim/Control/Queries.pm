@@ -838,6 +838,7 @@ sub albumsQuery {
 			utf8::decode( $c->{'composer.name'} ) if exists $c->{'composer.name'};
 			utf8::decode( $c->{'tracks.performance'} ) if exists $c->{'tracks.performance'};
 			utf8::decode( $c->{'contributors.name'} ) if exists $c->{'contributors.name'};
+			utf8::decode( $c->{'albums.display_artist'} ) if exists $c->{'albums.display_artist'};
 			$request->addResultLoop($loopname, $chunkCount, 'id', $c->{'albums.id'});
 			$request->addResultLoopIfValueDefined($loopname, $chunkCount, 'work_id', $c->{'tracks.work'});
 			$request->addResultLoopIfValueDefined($loopname, $chunkCount, 'work_name', $c->{'works.title'});
@@ -6671,6 +6672,8 @@ sub _getTagDataForTracks {
 			utf8::decode( $c->{'comments.value'} ) if exists $c->{'comments.value'};
 			utf8::decode( $c->{'tracks.discsubtitle'}) if exists $c->{'tracks.discsubtitle'};
 			utf8::decode( $c->{'tracks.grouping'}) if exists $c->{'tracks.grouping'};
+			utf8::decode( $c->{'albums.display_artist'}) if exists $c->{'albums.display_artist'};
+			utf8::decode( $c->{'tracks.display_artist'}) if exists $c->{'tracks.display_artist'};
 		}
 
 		my $id = $c->{'tracks.id'};
