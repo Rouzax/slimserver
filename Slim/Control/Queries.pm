@@ -647,6 +647,7 @@ sub albumsQuery {
 		# We need the main albums.contributor name for favorites, so always do this join unless getting count only.
 		$sql .= 'JOIN contributors ON contributors.id = albums.contributor ';
 		$c->{'contributors.name'} = 1;
+		$c->{'albums.display_artist'} = 1;
 	}
 
 	if ( $tags =~ /s/ ) {
@@ -899,7 +900,8 @@ sub albumsQuery {
 			#Don't use albums.contributor to set artist_id/artist for Works, it may well be completely wrong!
 			if ( !$work ) {
 				$tags =~ /S/ && $request->addResultLoopIfValueDefined($loopname, $chunkCount, 'artist_id', $c->{'albums.contributor'});
-				$tags =~ /a/ && $request->addResultLoopIfValueDefined($loopname, $chunkCount, 'artist', $c->{'contributors.name'});
+				$tags =~ /a/ && $request->addResultLoopIfValueDefined($loopname, $chunkCount, 'artist', $c->{'albums.display_artist'} || $c->{'contributors.name'});
+				$tags =~ /a/ && $c->{'albums.display_artist'} && $request->addResultLoopIfValueDefined($loopname, $chunkCount, 'display_artist', $c->{'albums.display_artist'});
 				$tags =~ /4/ && $request->addResultLoopIfValueDefined($loopname, $chunkCount, 'portraitid', $c->{'contributors.portraitid'});
 			}
 
@@ -5792,6 +5794,9 @@ sub _songDataFromHash {
 					$returnHash{$role} = $res->{$role};
 				}
 			}
+
+			my $da = $res->{'tracks.display_artist'} || $res->{'albums.display_artist'};
+			$returnHash{display_artist} = $da if $da;
 		}
 		elsif ( $tag eq 'S' ) {
 			for my $role ( @contributorRoles ) {
@@ -6524,6 +6529,12 @@ sub _getTagDataForTracks {
 	$tags =~ /4/ && do {
 		$join_contributors->();
 		$c->{'contributors.portraitid'} = 1;
+	};
+
+	$tags =~ /[aA]/ && do {
+		$join_albums->();
+		$c->{'albums.display_artist'} = 1;
+		$c->{'tracks.display_artist'} = 1;
 	};
 
 	$tags =~ /l/ && do {
