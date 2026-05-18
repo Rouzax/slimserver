@@ -3176,39 +3176,17 @@ sub _mergeAndCreateContributors {
 		}
 	}
 
-	# When plural tags (ALBUMARTISTS/ARTISTS) are present, merge their entries
-	# as individual contributors. These are known-clean individual names from
-	# the tagger, complementing whatever the singular tags contain.
+	# When plural tags (ALBUMARTISTS/ARTISTS) are present, use their entries
+	# as the sole contributor source for that role. The singular tag value
+	# (display string) is already stored in display_artist columns.
 	for my $pair ( ['ALBUMARTISTS', 'ALBUMARTIST'], ['ARTISTS', $attributes->{TRACKARTIST} ? 'TRACKARTIST' : 'ARTIST'] ) {
 		my ($plural, $singular) = @$pair;
 		next unless $attributes->{$plural} && ref $attributes->{$plural} eq 'ARRAY';
 
-		my $existing = $attributes->{$singular};
-		my %seen;
-		if ( $existing ) {
-			my @names = ref $existing eq 'ARRAY' ? @$existing : ($existing);
-			for my $n (@names) {
-				for my $split ( Slim::Music::Info::splitTag($n) ) {
-					$seen{$split} = 1;
-				}
-			}
-		}
+		my @individuals = grep { defined $_ && $_ ne '' } @{$attributes->{$plural}};
+		next unless @individuals;
 
-		my @extras;
-		for my $name ( @{$attributes->{$plural}} ) {
-			next unless defined $name && $name ne '';
-			push @extras, $name unless $seen{$name};
-		}
-
-		if ( @extras ) {
-			if ( ref $existing eq 'ARRAY' ) {
-				push @$existing, @extras;
-			} elsif ( $existing ) {
-				$attributes->{$singular} = [ $existing, @extras ];
-			} else {
-				$attributes->{$singular} = \@extras;
-			}
-		}
+		$attributes->{$singular} = \@individuals;
 	}
 
 	my %contributors = ();
