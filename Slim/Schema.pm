@@ -3176,17 +3176,20 @@ sub _mergeAndCreateContributors {
 		}
 	}
 
-	# When plural tags (ALBUMARTISTS/ARTISTS) are present, use their entries
-	# as the sole contributor source for that role. The singular tag value
-	# (display string) is already stored in display_artist columns.
-	for my $pair ( ['ALBUMARTISTS', 'ALBUMARTIST'], ['ARTISTS', $attributes->{TRACKARTIST} ? 'TRACKARTIST' : 'ARTIST'] ) {
-		my ($plural, $singular) = @$pair;
-		next unless $attributes->{$plural} && ref $attributes->{$plural} eq 'ARRAY';
+	# When plural tags (ALBUMARTISTS/ARTISTS) are present and the preference
+	# is enabled, use their entries as the sole contributor source for that
+	# role. The singular tag value (display string) is already stored in
+	# display_artist columns.
+	if ( $prefs->get('usePluralArtistTags') ) {
+		for my $pair ( ['ALBUMARTISTS', 'ALBUMARTIST'], ['ARTISTS', $attributes->{TRACKARTIST} ? 'TRACKARTIST' : 'ARTIST'] ) {
+			my ($plural, $singular) = @$pair;
+			next unless $attributes->{$plural} && ref $attributes->{$plural} eq 'ARRAY';
 
-		my @individuals = grep { defined $_ && $_ ne '' } @{$attributes->{$plural}};
-		next unless @individuals;
+			my @individuals = grep { defined $_ && $_ ne '' } @{$attributes->{$plural}};
+			next unless @individuals;
 
-		$attributes->{$singular} = \@individuals;
+			$attributes->{$singular} = \@individuals;
+		}
 	}
 
 	my %contributors = ();
