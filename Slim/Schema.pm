@@ -1711,11 +1711,14 @@ sub _newTrack {
 
 	# Capture display strings from singular tags before _preCheckAttributes defers them.
 	# For multi-value tags, the first entry is the display string.
+	# When only the plural tag exists, concatenate its entries as the display string.
 	my $albumDisplayArtist;
 	if ( $attributeHash->{ALBUMARTIST} ) {
 		$albumDisplayArtist = ref $attributeHash->{ALBUMARTIST} eq 'ARRAY'
 			? $attributeHash->{ALBUMARTIST}->[0]
 			: $attributeHash->{ALBUMARTIST};
+	} elsif ( $attributeHash->{ALBUMARTISTS} && ref $attributeHash->{ALBUMARTISTS} eq 'ARRAY' ) {
+		$albumDisplayArtist = join(', ', grep { defined $_ && $_ ne '' } @{$attributeHash->{ALBUMARTISTS}});
 	}
 
 	my $trackDisplayArtist;
@@ -1723,6 +1726,8 @@ sub _newTrack {
 		$trackDisplayArtist = ref $attributeHash->{ARTIST} eq 'ARRAY'
 			? $attributeHash->{ARTIST}->[0]
 			: $attributeHash->{ARTIST};
+	} elsif ( $attributeHash->{ARTISTS} && ref $attributeHash->{ARTISTS} eq 'ARRAY' ) {
+		$trackDisplayArtist = join(', ', grep { defined $_ && $_ ne '' } @{$attributeHash->{ARTISTS}});
 	}
 
 	($attributeHash, $deferredAttributes) = $self->_preCheckAttributes({
@@ -2023,6 +2028,8 @@ sub updateOrCreateBase {
 			$albumDisplayArtist = ref $attributeHash->{ALBUMARTIST} eq 'ARRAY'
 				? $attributeHash->{ALBUMARTIST}->[0]
 				: $attributeHash->{ALBUMARTIST};
+		} elsif ( $attributeHash->{ALBUMARTISTS} && ref $attributeHash->{ALBUMARTISTS} eq 'ARRAY' ) {
+			$albumDisplayArtist = join(', ', grep { defined $_ && $_ ne '' } @{$attributeHash->{ALBUMARTISTS}});
 		}
 
 		my $trackDisplayArtist;
@@ -2030,6 +2037,8 @@ sub updateOrCreateBase {
 			$trackDisplayArtist = ref $attributeHash->{ARTIST} eq 'ARRAY'
 				? $attributeHash->{ARTIST}->[0]
 				: $attributeHash->{ARTIST};
+		} elsif ( $attributeHash->{ARTISTS} && ref $attributeHash->{ARTISTS} eq 'ARRAY' ) {
+			$trackDisplayArtist = join(', ', grep { defined $_ && $_ ne '' } @{$attributeHash->{ARTISTS}});
 		}
 
 		my $deferredAttributes;
