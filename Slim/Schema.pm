@@ -2738,6 +2738,21 @@ sub _preCheckAttributes {
 		}
 	}
 
+	# Take the display credit from the raw tag, before splitTag runs. A tag holding a
+	# single value is one credit however many separator characters it contains, so an
+	# artist name such as "TH;EN" must not make the tag look multi-valued.
+	my %rawDisplayArtist;
+	for my $tag (qw(ALBUMARTIST ARTIST)) {
+		next unless defined $attributes->{$tag};
+
+		if (ref($attributes->{$tag}) eq 'ARRAY') {
+			$rawDisplayArtist{$tag} = $attributes->{$tag}->[0] if scalar(@{$attributes->{$tag}}) == 1;
+		}
+		else {
+			$rawDisplayArtist{$tag} = $attributes->{$tag};
+		}
+	}
+
 	for my $tag (Slim::Schema::Contributor->contributorRoles, qw(ALBUMARTISTS ARTISTS)) {
 		if ($attributes->{$tag}) {
 			my @tag = Slim::Music::Info::splitTag($attributes->{$tag});
@@ -2745,13 +2760,27 @@ sub _preCheckAttributes {
 		}
 	}
 	for my $tag (qw(ALBUMARTIST ARTIST)) {
-		if ( $prefs->get('usePluralArtistTags') && $attributes->{$tag} && scalar(@{$attributes->{$tag}}) == 1 && $attributes->{$tag . 'S'} ) {
-				my $displayArtist = $attributes->{$tag}->[0];
-				$attributes->{$tag} = $attributes->{$tag . 'S'};
-				$attributes->{$tag . 'S'} = $displayArtist;
+		if ( !$prefs->get('usePluralArtistTags') || !$attributes->{$tag . 'S'} ) {
+			delete $attributes->{$tag . 'S'};
+		}
+		elsif ( defined $rawDisplayArtist{$tag} ) {
+			# Singular holds one credit: it becomes the display name, the plural becomes
+			# the individual contributors.
+			$attributes->{$tag} = $attributes->{$tag . 'S'};
+			$attributes->{$tag . 'S'} = $rawDisplayArtist{$tag};
+		}
+		elsif ( $attributes->{$tag} ) {
+			# Singular holds several values (a display credit plus its members, as SongKong
+			# writes). The plural stays authoritative for the individuals; take the first
+			# singular value as the display name.
+			my $displayArtist = $attributes->{$tag}->[0];
+			$attributes->{$tag} = $attributes->{$tag . 'S'};
+			$attributes->{$tag . 'S'} = $displayArtist;
 		}
 		else {
-			delete $attributes->{$tag . 'S'};
+			# No singular tag at all: the plural is the only source of contributors, and
+			# there is no credit to display.
+			$attributes->{$tag} = delete $attributes->{$tag . 'S'};
 		}
 	}
 
